@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  app:
+    build: .
+    working_dir: /app/
+    command: ["/bin/sh", "wait.sh"]
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    ports:
+      - "33900:3306"
+    volumes:
+      - ./mysql:/var/lib/mysql
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: True
+      MYSQL_USER: 'memory_bot'
+      MYSQL_PASSWORD: 'memory_bot_password'
+      MYSQL_DATABASE: 'memory_bot'

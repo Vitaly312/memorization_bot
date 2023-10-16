@@ -1,0 +1,7 @@
+.vs
+**/__pycache__
+env
+.gitignore
+*.md
+.git
+mysql

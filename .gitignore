@@ -1,0 +1,6 @@
+env/
+config.ini
+.vs/
+.env
+**/__pycache__/
+mysql/
