@@ -1,23 +1,33 @@
 # Memorization bot
+# Бот для опросов
+Telegram-бот, который позволяет быстро выучить или запомнить что-то!
 
-This is a telegram bot, maked with aiogram.
-Bot can ask question from list and check answer is correct,
-it can help memorizing something.\
-Bot have admin panel to edit questions and sections.
+Бот может задавать вопросы из списка в случайном порядке и 
+проверять, правильно ли ответил пользователь.
+### Возможности бота:
+- Секции вопросов, которые позволяют разделить вопросы по темам
+- Список вопросов для каждой секции.
+- Админ панель, которая позволяет администратору легко создавать и удалять вопросы 
+и секции вопросов
+- Статистика прохождения опросов пользователем
 
-### Getting started
-1. Clone repository
-2. Insert your bot token and telegram id in file `config.example.ini`
-3. Run `docker-compose up`
+Бот написан с использованием фреймворка `aiogram`.
+Все данные сохраняются в базе данных `mysql`, используется orm `SQLAlchemy`.
 
+### Установка и запуск
+1. Скачайте данный репозиторий
+2. Вставьте ваш токен в файл `config.example.ini`
+3. Выполните `docker-compose up`
 
-### Environment variables:
-You can set environment variables in file `.env.example`\
-Variables:\
-`MEMORYBOT_CONFIG_PATH` - Path to custom 
-configuration file. If not setting, used default
-config - `config.example.ini`.
+### Файлы конфигурации:
+По умолчанию используется файл `config.example.ini`.
+Вы можете создать свой файл конфигурации(и задать путь к этому файлу, 
+см. Переменные окружения)
+Поддерживатеся только формат файла `.ini`.
 
-### Configuration file:
-You can edit configuration file `config.example.ini` or create new configuration file.
-Only supported file format - `.ini`.
+### Переменные окружения:
+Установите переменные окружения в файле `.env.example`\
+Переменные:\
+`MEMORYBOT_CONFIG_PATH` - Путь к файлу конфигурации.
+Если не установлен, используется стандартный файл конфигурации - `config.example.ini`.
+
