@@ -15,7 +15,7 @@ services:
     volumes:
       - ./mysql:/var/lib/mysql
     environment:
-      MYSQL_RANDOM_ROOT_PASSWORD: True
+      MYSQL_RANDOM_ROOT_PASSWORD: 1
       MYSQL_USER: 'memory_bot'
       MYSQL_PASSWORD: 'memory_bot_password'
       MYSQL_DATABASE: 'memory_bot'
