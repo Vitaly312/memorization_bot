@@ -4,3 +4,4 @@ config.ini
 .env
 **/__pycache__/
 mysql/
+setup_tools.py

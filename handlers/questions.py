@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram import types
 from database.models import User, Section, Result, Question
 from database.connect import get_conn
-from keyboards.question import question_keyboard
+from keyboards.question import question_keyboard, stop_survey_kb, rm_kb
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from random import choice
@@ -27,7 +27,6 @@ async def get_random_question(questions):
     '''Remove random question and answer from dict and return them'''
     question = choice(list(questions.keys())) 
     return question, questions.pop(question)
-
 
 class ExecutingSurvey(StatesGroup):
     wait_answer = State()
@@ -59,9 +58,23 @@ async def start_survey(callback: types.CallbackQuery, state: FSMContext, session
     await state.update_data({'questions': questions, 
                              'answer': answer, 'true_answer': 0,
                              'section': section.title})
-    await callback.message.answer(question)
+    await callback.message.answer(question, reply_markup=stop_survey_kb())
     await state.set_state(ExecutingSurvey.wait_answer)
     await callback.answer()
+
+
+@router.message(ExecutingSurvey.wait_answer, F.text == 'Завершить опрос')
+async def exit_survey(message: Message, state: FSMContext, user: User, session: Session):
+    user_data = await state.get_data()
+    current_section = session.query(Section).filter(Section.title == user_data['section']).first()
+    count_ans = len(current_section.questions) - len(user_data['questions']) - 1
+    right_ans = int(user_data['true_answer'])
+    result = right_ans / (count_ans or 1) * 100
+    session.add(Result(result=result, user=user, section=current_section))
+    await state.clear()
+    await message.answer(f'Вы заверили опрос. Правильных ответов: {right_ans}/{count_ans}', reply_markup=rm_kb())
+
+
 
 @router.message(ExecutingSurvey.wait_answer, F.text)
 async def get_next_question(message: Message, state: FSMContext, user: User, session: Session):
@@ -82,7 +95,7 @@ async def get_next_question(message: Message, state: FSMContext, user: User, ses
         current_section = session.query(Section).filter(Section.title == user_data['section']).first()
         all_ans = len(current_section.questions)
         right_ans = user_data['true_answer']        
-        await message.answer(f"Правильных ответов: {right_ans}/{all_ans}")
+        await message.answer(f"Правильных ответов: {right_ans}/{all_ans}", reply_markup=rm_kb())
         result = right_ans / all_ans * 100
         current_result = Result(result=result, user=user, section=current_section)
         session.add(current_result)
