@@ -72,7 +72,7 @@ async def exit_survey(message: Message, state: FSMContext, user: User, session: 
     result = right_ans / (count_ans or 1) * 100
     session.add(Result(result=result, user=user, section=current_section))
     await state.clear()
-    await message.answer(f'Вы заверили опрос. Правильных ответов: {right_ans}/{count_ans}', reply_markup=rm_kb())
+    await message.answer(f'Вы завершили опрос. Правильных ответов: {right_ans}/{count_ans}', reply_markup=rm_kb())
 
 
 
