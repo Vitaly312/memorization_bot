@@ -1,14 +1,19 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 from load_config import config
 from .models import Base
 
 
-url = "mysql+mysqlconnector://{mysql_user}:{mysql_password}\
+DATABASE_URL = "mysql+aiomysql://{mysql_user}:{mysql_password}\
 @{mysql_host}/{mysql_database}".format(**config["MYSQL"])
-engine = create_engine(url, pool_recycle=1600)
-engine.connect()
-Base.metadata.create_all(engine)
+engine = create_async_engine(DATABASE_URL, pool_recycle=1600)
 
-def get_conn() -> Session:
-    return Session(bind=engine)
+async_session = sessionmaker(
+    engine, class_=AsyncSession,
+)
+async def init_models():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+def get_conn() -> AsyncSession:
+    return async_session()
