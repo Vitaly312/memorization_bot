@@ -9,7 +9,8 @@ from database.connect import init_models
 
 async def main():
     logging.basicConfig(level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+    format='[%(asctime)s] %(levelname)s - %(name)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
+    logging.getLogger('aiogram.event').setLevel(logging.WARNING)
     await init_models()
     bot = Bot(token=config["APP"]["BOT_TOKEN"], parse_mode="HTML")
     dp = Dispatcher()
