@@ -3,25 +3,23 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram import types
 from database.models import User, Section, Result, Question
-from database.connect import get_conn
 from keyboards.question import question_keyboard, stop_survey_kb, rm_kb
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from random import choice
 from middlewares.authorization import AuthorizeMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.sql import func 
 from datetime import datetime, timedelta
+from filters.section_filters import SectionExistFilter
+from sqlalchemy.orm import selectinload
+from functools import reduce
 
 
 router = Router()
 router.message.middleware(AuthorizeMiddleware())
 router.callback_query.middleware(AuthorizeMiddleware())
-
-def section_is_aviable(section_title):
-    with get_conn() as session:
-        sections = [s.title for s in session.query(Section).all()]
-    return section_title in sections
 
 async def get_random_question(questions):
     '''Remove random question and answer from dict and return them'''
@@ -32,22 +30,28 @@ class ExecutingSurvey(StatesGroup):
     wait_answer = State()
 
 @router.message(Command('start_survey'))
-async def start_survey(message: Message, session: Session):
-    sections = [s.title for s in session.query(Section).all()]
+async def start_survey(message: Message, session: AsyncSession):
+    result = await session.execute(select(Section.title))
+    sections = [data[0] for data in result]
     if sections:
         await message.answer("Выберите раздел", reply_markup=question_keyboard(sections))
     else:
         await message.answer("На данный момент разделы не существуют")
 
-@router.callback_query(lambda cb: section_is_aviable(cb.data))
-async def start_survey(callback: types.CallbackQuery, state: FSMContext, session: Session):
+@router.callback_query(SectionExistFilter())
+async def start_survey(callback: types.CallbackQuery,
+                      state: FSMContext,
+                      session: AsyncSession):
     current_state = await state.get_state()
     if current_state in ExecutingSurvey:
         await callback.message.answer('Для того, чтобы начать новый опрос, \
 сначала завершите уже запущенный опрос')
         await callback.answer()
         return
-    section = session.query(Section).filter(Section.title==callback.data).first()
+    result = await session.execute(select(Section)
+                                   .where(Section.title==callback.data)
+                                   .options(selectinload(Section.questions)))
+    section = result.scalar()
     questions = {question.question: question.answer for question in section.questions}
     await callback.message.answer(f"Вы выбрали раздел {section}")
     if not questions:
@@ -64,20 +68,13 @@ async def start_survey(callback: types.CallbackQuery, state: FSMContext, session
 
 
 @router.message(ExecutingSurvey.wait_answer, F.text == 'Завершить опрос')
-async def exit_survey(message: Message, state: FSMContext, user: User, session: Session):
-    user_data = await state.get_data()
-    current_section = session.query(Section).filter(Section.title == user_data['section']).first()
-    count_ans = len(current_section.questions) - len(user_data['questions']) - 1
-    right_ans = int(user_data['true_answer'])
-    result = right_ans / (count_ans or 1) * 100
-    session.add(Result(result=result, user=user, section=current_section))
-    await state.clear()
-    await message.answer(f'Вы завершили опрос. Правильных ответов: {right_ans}/{count_ans}', reply_markup=rm_kb())
-
+async def exit_survey(message: Message, state: FSMContext, user: User, session: AsyncSession):
+    await message.answer("Вы завершили опрос")
+    await save_survey_result(message, user, session, state)
 
 
 @router.message(ExecutingSurvey.wait_answer, F.text)
-async def get_next_question(message: Message, state: FSMContext, user: User, session: Session):
+async def get_next_question(message: Message, state: FSMContext, user: User, session: AsyncSession):
     user_data = await state.get_data()
     if message.text == user_data['answer']:
         new_true_answer = user_data['true_answer'] + 1
@@ -91,26 +88,39 @@ async def get_next_question(message: Message, state: FSMContext, user: User, ses
             await state.update_data({'questions': questions, 'answer': answer})
             await message.answer(question)
     else:
-        user_data = await state.get_data()
-        current_section = session.query(Section).filter(Section.title == user_data['section']).first()
-        all_ans = len(current_section.questions)
-        right_ans = user_data['true_answer']        
-        await message.answer(f"Правильных ответов: {right_ans}/{all_ans}", reply_markup=rm_kb())
-        result = right_ans / all_ans * 100
-        current_result = Result(result=result, user=user, section=current_section)
-        session.add(current_result)
-        await state.clear()
+        await save_survey_result(message, user, session, state)
+
+async def save_survey_result(message: Message, user: User, session: AsyncSession, state: FSMContext):
+    '''save results executing survey by user'''
+    user_data = await state.get_data()
+    result = await session.execute(select(Section).where(Section.title == user_data['section']).options(
+        selectinload(Section.questions)
+        ))
+    section = result.scalar()
+    if len(user_data.get('questions', ())):
+        all_ans = len(section.questions) - len(user_data.get('questions', ())) - 1
+    else:
+        all_ans = len(section.questions)
+    right_ans = user_data['true_answer']
+    await message.answer(f"Правильных ответов: {right_ans}/{all_ans}", reply_markup=rm_kb())
+    result = right_ans / (all_ans or 1) * 100
+    current_result = Result(result=result, user=user, section=section)
+    session.add(current_result)
+    await state.clear()
 
 @router.message(Command('info'))
-async def cmd_get_info(message: Message, user: User, session: Session):
+async def cmd_get_info(message: Message, user: User, session: AsyncSession):
     data = {}
     yesterday = datetime.now() - timedelta(days=1)
-    for section in session.query(Section).all():
-        total_result = session.query(func.avg(Result.result)).filter(Result.user==user,
-                                                               Result.section==section).first()[0]
-        result_for_day = session.query(func.avg(Result.result)).filter(Result.user==user,
+    result = await session.execute(select(Section))
+    for section in result.scalars():
+        query_for_day = select(func.avg(Result.result)).filter(Result.user==user,
                                                                Result.section==section,
-                                                               Result.created_on > yesterday).first()[0]
+                                                               Result.created_on > yesterday)
+        query_total = select(func.avg(Result.result)).filter(Result.user==user,
+                                                               Result.section==section)
+        result_for_day = (await session.execute(query_for_day)).first()[0]
+        total_result = (await session.execute(query_total)).first()[0]
         total_res = []
         for result in (result_for_day, total_result):
             total_res.append(str(round(result, 1)) + '%' if result is not None else 'Нет данных')
