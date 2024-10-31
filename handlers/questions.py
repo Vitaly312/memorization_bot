@@ -76,12 +76,12 @@ async def exit_survey(message: Message, state: FSMContext, user: User, session: 
 @router.message(ExecutingSurvey.wait_answer, F.text)
 async def get_next_question(message: Message, state: FSMContext, user: User, session: AsyncSession):
     user_data = await state.get_data()
-    if message.text == user_data['answer']:
+    if message.text.lower() == user_data['answer'].lower():
         new_true_answer = user_data['true_answer'] + 1
         await state.update_data({'true_answer': new_true_answer})
         await message.answer('Правильно')
     else:
-        await message.answer(f'Неправильно.Правильный ответ: {user_data["answer"]}')
+        await message.answer(f'Неправильно.Правильный ответ: {user_data["answer"].lower()}')
     questions = user_data['questions']
     if questions:
             question, answer = await get_random_question(user_data['questions'])
