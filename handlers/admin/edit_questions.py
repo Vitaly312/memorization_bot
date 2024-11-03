@@ -91,11 +91,11 @@ async def cmd_select_section(message: Message, state: FSMContext, session: Async
 async def cmd_list_questions(message: Message, command: CommandObject, session: AsyncSession):
     msg = '<u>Список вопросов:</u>\n(В формате ID: вопрос - ответ)\n\n'
     if not command.args:
-        await message.answer("Для того, чтобы получть список вопросов, необходимо указать id раздела")
+        await message.answer("Для того, чтобы получить список вопросов, необходимо указать id раздела")
         return
     current_section = await session.get(Section, command.args, options=[selectinload(Section.questions)])
     if not current_section:
-        await message.answer('Секции с указаным id не существует')
+        await message.answer('Секции с указанным id не существует')
     elif not current_section.questions:
         await message.answer(f'Для секции {current_section.title} не существует вопросов')
     else:

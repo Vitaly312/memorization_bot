@@ -16,16 +16,16 @@ async def cmd_start(message: Message, user: User, session: Session):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     if user.is_admin:
-        await message.answer('Вы зарегестрированны как администратор')
+        await message.answer('Вы зарегистрированы как администратор')
         return
 
     if str(message.from_user.id) in config["APP"]["ADMIN_TG_ID"]:
         user.is_admin = True
         session.add(user)
         logging.info(f"{str(user)} успешно вошёл в панель управления")
-        await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получть справку по командам админ панели')
+        await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получить справку по командам админ панели')
         return
-    logging.info(f"{str(user)} совешил попытку входа в панель управления, неуспешно")
+    logging.info(f"{str(user)} совершил попытку входа в панель управления, неуспешно")
     await message.answer('Вы не являетесь администратором')
 
 @router.message(Command('exit'))
