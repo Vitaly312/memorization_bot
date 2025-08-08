@@ -4,8 +4,21 @@ from database.models import User
 from database.connect import get_conn
 from datetime import datetime
 from sqlalchemy import select, update
+from service import views, questions
+from service.uow import SQLAlchemyUnitOfWork
 import logging
 
+
+class CreateUserMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event: Message, data) -> bool:
+        uow = SQLAlchemyUnitOfWork()
+        if not await views.is_user_exists(uow, event.from_user.id):
+            await questions.create_user(uow, 
+                tg_id=event.from_user.id,
+                fname=event.from_user.first_name,
+                lname=event.from_user.last_name,
+                username=event.from_user.username)
+        return await handler(event, data)
 
 class AuthorizeMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: Message, data) -> bool:
@@ -22,7 +35,7 @@ class AuthorizeMiddleware(BaseMiddleware):
                             username=event.from_user.username
                             )
                 session.add(user)
-                logger.info(f'New user')
+                logger.info('New user')
             stmt = update(User).where(User.id==user.id).values(last_login=datetime.now())
             await session.execute(stmt)
             data['user'] = user
