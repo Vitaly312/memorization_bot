@@ -10,7 +10,7 @@ from keyboards.question import (
 )
 from random import choice
 from middlewares.authorization import CreateUserMiddleware
-from service import views, questions as question_service, uow
+from service import views, use_cases, uow
 from handlers.states import ExecutingSurvey
 from aiogram.fsm.context import FSMContext
 
@@ -97,7 +97,7 @@ async def get_next_question(message: Message, state: FSMContext):
 
 async def handle_survey_ending(message: Message, state: FSMContext):
     user_data = await state.get_data()
-    result = await question_service.save_survey_result(
+    result = await use_cases.save_survey_result(
         uow=uow.SQLAlchemyUnitOfWork(),
         section_title=user_data["section"],
         correct_answers_count=user_data["correct_answers_count"],

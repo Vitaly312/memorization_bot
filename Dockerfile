@@ -1,6 +1,6 @@
-FROM ubuntu:22.04
+FROM python:3.12-slim
 COPY requirements.txt /app/
 WORKDIR /app
-RUN apt -y update && apt -y upgrade && apt -y install python3 python3-pip netcat && \
-pip install -r requirements.txt
+RUN apt -y update && apt -y install netcat-traditional && pip install uv
+RUN uv pip install --system -r requirements.txt
 COPY . /app/

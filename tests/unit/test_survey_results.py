@@ -6,7 +6,7 @@ from service.repo import (
 )
 from database import models
 import pytest
-from service import questions, exceptions
+from service import use_cases, exceptions
 
 
 class FakeRepository[T](AbstractRepository[T]):
@@ -75,7 +75,7 @@ async def test_saved_result_has_correct_percent():
         )
     )
     uow.user_repo.add(models.User(tg_id=1, fname="test", lname="test", username="test"))
-    result = await questions.save_survey_result(uow, "test", 50, 1)
+    result = await use_cases.save_survey_result(uow, "test", 50, 1)
     assert result.result == 50
 
 @pytest.mark.asyncio
@@ -83,11 +83,11 @@ async def test_save_result_raise_exception_if_section_not_found():
     uow = FakeUnitOfWork()
     uow.user_repo.add(models.User(tg_id=1, fname="test", lname="test", username="test"))
     with pytest.raises(exceptions.SectionNotFoundException):
-        await questions.save_survey_result(uow, "test", 50, 1)
+        await use_cases.save_survey_result(uow, "test", 50, 1)
 
 @pytest.mark.asyncio
 async def test_save_result_raise_exception_if_user_not_found():
     uow = FakeUnitOfWork()
     uow.question_sections_repo.add(models.Section(title="test"))
     with pytest.raises(exceptions.UserNotFoundException):
-        await questions.save_survey_result(uow, "test", 50, 1)
+        await use_cases.save_survey_result(uow, "test", 50, 1)

@@ -1,6 +1,6 @@
-from .uow import AbstractUnitOfWork
+from ..uow import AbstractUnitOfWork
 from database import models
-from .exceptions import (
+from ..exceptions import (
     SectionNotFoundException,
     QuestionNotFoundException,
     UserNotFoundException,

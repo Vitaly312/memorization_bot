@@ -5,30 +5,32 @@ from middlewares.authorization import CreateUserMiddleware
 from load_config import config
 import logging
 from service.uow import SQLAlchemyUnitOfWork
-from service import views, user
+from service import views, use_cases
+import json
+
 
 router = Router()
 router.message.middleware(CreateUserMiddleware())
+logger = logging.getLogger(__name__)
 
 @router.message(Command('admin', 'a'))
 async def cmd_start(message: Message):
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
     if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
         await message.answer('Вы зарегистрированы как администратор')
         return
-    if str(message.from_user.id) in config["APP"]["ADMIN_TG_ID"]:
-        await user.make_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
-        logging.info(f"{str(message.from_user.id)} успешно вошёл в панель управления")
+    if int(message.from_user.id) in json.loads(config["APP"]["ADMIN_TG_ID"]):
+        await use_cases.make_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
+        logger.info(f"{str(message.from_user.id)} успешно вошёл в панель управления")
         await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получить справку по командам админ панели')
         return
-    logging.info(f"{str(message.from_user.id)} совершил попытку входа в панель управления, неуспешно")
+    logger.info(f"{str(message.from_user.id)} совершил попытку входа в панель управления, неуспешно")
     await message.answer('Вы не являетесь администратором')
 
 @router.message(Command('exit'))
 async def cmd_exit(message: Message):
-    if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
-        await user.remove_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
+    uow = SQLAlchemyUnitOfWork()
+    if await views.is_user_admin(uow, message.from_user.id):
+        await use_cases.remove_user_admin(uow, message.from_user.id)
         await message.answer('Вы вышли из панели управления')
     else:
         await message.answer('Вы не являетесь администратором')
