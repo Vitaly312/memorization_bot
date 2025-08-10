@@ -1,113 +1,119 @@
-﻿from aiogram import Router, F
+﻿from aiogram import Router, F, html
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from database.models import Question, Section
-from aiogram.fsm.state import StatesGroup, State
+from handlers.states import CreateQuestion
 from aiogram.fsm.context import FSMContext
-from middlewares.authorization import AuthorizeMiddleware
+from middlewares.authorization import CreateUserMiddleware
 from middlewares.admin import IsAdminMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
+from service.uow import SQLAlchemyUnitOfWork
+from service import questions, views, exceptions, sections as sections_service
 
 
 router = Router()
-router.message.middleware(AuthorizeMiddleware())
+router.message.middleware(CreateUserMiddleware())
 router.message.middleware(IsAdminMiddleware())
 
-class CreateQuestion(StatesGroup):
-    create_question = State()
-    create_answer = State()
-    select_section = State()
 
-@router.message(Command('list_sections'))
-async def cmd_list_sections(message: Message, session: AsyncSession):
-    result = await session.execute(select(Section))
-    query = result.scalars()
-    if not query:
-        await message.answer('На данный момент разделы не существуют')
+@router.message(Command("list_sections"))
+async def cmd_list_sections(message: Message):
+    sections = await views.get_section_titles_and_ids(SQLAlchemyUnitOfWork())
+    if not sections:
+        await message.answer("На данный момент разделы не существуют")
     else:
-        msg = '<u>Список разделов:</u>\n(В формате ID - название раздела)\n\n'
-        for session in query.all():
-            msg += f"{session.id} - {session.title}\n"
-        await message.answer(msg, parse_mode = "HTML")
+        msg = "<u>Список разделов:</u>\n(В формате ID - название раздела)\n\n"
+        for section in sections:
+            msg += f"{section.id} - {section.title}\n"
+        await message.answer(msg, parse_mode="HTML")
 
-@router.message(Command('create_section'))
-async def cmd_create_section(message: Message, command: CommandObject, session: AsyncSession):
+
+@router.message(Command("create_section"))
+async def cmd_create_section(message: Message, command: CommandObject):
     if not command.args:
         await message.answer("Необходимо указать название раздела")
         return
     try:
-        section = Section(title=command.args)
-        session.add(section)
-        await session.commit()
+        await sections_service.create_section(SQLAlchemyUnitOfWork(), command.args)
         await message.answer(f"Раздел с названием {command.args} успешно создан")
-    except IntegrityError:
-        await session.rollback()
-        await message.answer('Раздел с таким названием уже существует. Выберите другое название раздела')
+    except exceptions.SectionAlreadyExistsException:
+        await message.answer(
+            "Раздел с таким названием уже существует. Выберите другое название раздела"
+        )
 
-@router.message(Command('delete_section'))
-async def cmd_delete_section(message: Message, command: CommandObject, session: AsyncSession):
-    section = await session.get(Section, command.args)
-    if not section:
-        await message.answer('Раздела с указанным id не существует')
-    else:
-        await session.delete(section)
-        await message.answer(f"Раздел с id {command.args} успешно удалён")
 
-@router.message(Command('create_question'))
+@router.message(Command("delete_section"))
+async def cmd_delete_section(message: Message, command: CommandObject):
+    try:
+        await sections_service.delete_section(SQLAlchemyUnitOfWork(), command.args)
+        await message.answer(f"Раздел с названием {command.args} успешно удалён")
+    except exceptions.SectionNotFoundException:
+        await message.answer("Раздела с таким названием не существует")
+
+
+@router.message(Command("create_question"))
 async def cmd_new_question(message: Message, state: FSMContext):
-    await message.answer('Напишите вопрос')
+    await message.answer("Напишите вопрос")
     await state.set_state(CreateQuestion.create_question)
+
 
 @router.message(CreateQuestion.create_question, F.text)
 async def cmd_create_answer(message: Message, state: FSMContext):
-    await state.update_data({'question': message.text})
-    await message.answer('Напишите ответ к вопросу')
+    await state.update_data({"question": message.text})
+    await message.answer("Напишите ответ к вопросу")
     await state.set_state(CreateQuestion.create_answer)
+
 
 @router.message(CreateQuestion.create_answer, F.text)
 async def cmd_create_question(message: Message, state: FSMContext):
-    await state.update_data({'answer': message.text})
-    await message.answer('Выберите раздел для вопроса.Укажите только <b>id</b> раздела.Вы\
-   можете посмотреть список разделов командой /list_sections')
+    await state.update_data({"answer": message.text})
+    await message.answer(
+        "Выберите раздел для вопроса.Укажите только <b>id</b> раздела.Вы\
+   можете посмотреть список разделов командой /list_sections"
+    )
     await state.set_state(CreateQuestion.select_section)
 
+
 @router.message(CreateQuestion.select_section, F.text)
-async def cmd_select_section(message: Message, state: FSMContext, session: AsyncSession):
+async def cmd_select_section(message: Message, state: FSMContext):
     user_data = await state.get_data()
-    if not await session.get(Section, message.text):
-        await message.answer('Раздела с указанным id не существует.Укажите id существующего раздела:')
+    try:
+        await questions.create_question(
+            SQLAlchemyUnitOfWork(),
+            user_data["question"],
+            user_data["answer"],
+            int(message.text) if message.text.isdigit() else None,
+        )
+    except exceptions.SectionNotFoundException:
+        await message.answer(
+            "Раздела с указанным id не существует.Укажите id существующего раздела:"
+        )
         return
-    question = Question(question=user_data['question'],
-                       answer=user_data['answer'], section_id=message.text)
-    session.add(question)
-    await session.commit()
-    await message.answer(f"Вопрос успешно создан")
+    await message.answer("Вопрос успешно создан")
     await state.clear()
 
-@router.message(Command('list_questions'))
-async def cmd_list_questions(message: Message, command: CommandObject, session: AsyncSession):
-    msg = '<u>Список вопросов:</u>\n(В формате ID: вопрос - ответ)\n\n'
-    if not command.args:
-        await message.answer("Для того, чтобы получить список вопросов, необходимо указать id раздела")
+
+@router.message(Command("list_questions"))
+async def cmd_list_questions(message: Message, command: CommandObject):
+    try:
+        section_id = int(command.args or '')
+    except ValueError:
+        await message.answer("Необходимо указать id раздела")
         return
-    current_section = await session.get(Section, command.args, options=[selectinload(Section.questions)])
-    if not current_section:
-        await message.answer('Секции с указанным id не существует')
-    elif not current_section.questions:
-        await message.answer(f'Для секции {current_section.title} не существует вопросов')
+    questions = await views.get_questions_for_section(
+        SQLAlchemyUnitOfWork(), section_id
+    )
+    if not questions:
+        await message.answer(f"Для секции {command.args} не существует вопросов")
     else:
-        for question in current_section.questions:
-            msg += f"{question.id}: {question.question} - {question.answer}\n"
+        msg = "<u>Список вопросов:</u>\n(В формате ID: вопрос - ответ)\n\n"
+        for question in questions:
+            msg += f"{question.id}: {html.quote(question.question)} - {html.quote(question.answer)}\n"
         await message.answer(msg)
 
-@router.message(Command('delete_question'))
-async def cmd_delete_question(message: Message, command: CommandObject, session: AsyncSession):
-    question = await session.get(Question, command.args)
-    if not question:
-        await message.answer('Вопроса с указанным id не существует')
-    else:
-        await session.delete(question)
+
+@router.message(Command("delete_question"))
+async def cmd_delete_question(message: Message, command: CommandObject):
+    try:
+        await questions.delete_question(SQLAlchemyUnitOfWork(), int(command.args))
         await message.answer(f"Вопрос с id {command.args} успешно удалён")
+    except exceptions.QuestionNotFoundException:
+        await message.answer("Вопроса с указанным id не существует")

@@ -1,44 +1,40 @@
 ﻿from aiogram import Router, html
 from aiogram.filters import Command
 from aiogram.types import Message
-from middlewares.authorization import AuthorizeMiddleware
-from database.models import User
+from middlewares.authorization import CreateUserMiddleware
 from load_config import config
-from sqlalchemy.orm import Session
 import logging
-
+from service.uow import SQLAlchemyUnitOfWork
+from service import views, user
 
 router = Router()
-router.message.middleware(AuthorizeMiddleware())
+router.message.middleware(CreateUserMiddleware())
 
 @router.message(Command('admin', 'a'))
-async def cmd_start(message: Message, user: User, session: Session):
+async def cmd_start(message: Message):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    if user.is_admin:
+    if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
         await message.answer('Вы зарегистрированы как администратор')
         return
-
     if str(message.from_user.id) in config["APP"]["ADMIN_TG_ID"]:
-        user.is_admin = True
-        session.add(user)
-        logging.info(f"{str(user)} успешно вошёл в панель управления")
+        await user.make_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
+        logging.info(f"{str(message.from_user.id)} успешно вошёл в панель управления")
         await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получить справку по командам админ панели')
         return
-    logging.info(f"{str(user)} совершил попытку входа в панель управления, неуспешно")
+    logging.info(f"{str(message.from_user.id)} совершил попытку входа в панель управления, неуспешно")
     await message.answer('Вы не являетесь администратором')
 
 @router.message(Command('exit'))
-async def cmd_exit(message: Message, user: User, session: Session):
-    if user.is_admin:
-        user.is_admin = False
-        session.add(user)
+async def cmd_exit(message: Message):
+    if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
+        await user.remove_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
         await message.answer('Вы вышли из панели управления')
     else:
         await message.answer('Вы не являетесь администратором')
 
 @router.message(Command('admin_help'))
-async def cmd_admin_help(message: Message, user: User):
+async def cmd_admin_help(message: Message):
     admin_help_msg = f'''
 <u><b>Справка по командам админ панели</b></u>
 

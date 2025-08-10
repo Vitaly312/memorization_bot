@@ -17,7 +17,7 @@ def question_keyboard(sections: list[str]):
     builder = InlineKeyboardBuilder()
     buttons = [
         InlineKeyboardButton(
-            text=section, callback_data=QuestionSectionCallbackFactory(section=section)
+            text=section, callback_data=QuestionSectionCallbackFactory(section=section).pack()
         )
         for section in sections
     ]

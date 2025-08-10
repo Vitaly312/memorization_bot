@@ -8,11 +8,11 @@ from keyboards.question import (
     rm_kb,
     QuestionSectionCallbackFactory,
 )
-from aiogram.fsm.state import StatesGroup, State
-from aiogram.fsm.context import FSMContext
 from random import choice
 from middlewares.authorization import CreateUserMiddleware
 from service import views, questions as question_service, uow
+from handlers.states import ExecutingSurvey
+from aiogram.fsm.context import FSMContext
 
 
 router = Router()
@@ -24,10 +24,6 @@ async def get_random_question(questions: dict[str, str]) -> tuple[str, str]:
     """Remove random question and answer from dict and return them"""
     question = choice(list(questions.keys()))
     return question, questions.pop(question)
-
-
-class ExecutingSurvey(StatesGroup):
-    wait_answer = State()
 
 
 @router.message(Command("start_survey"))

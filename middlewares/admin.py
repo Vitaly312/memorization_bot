@@ -1,10 +1,11 @@
 ﻿from aiogram import BaseMiddleware
 from aiogram.types import Message
-
+from service.uow import SQLAlchemyUnitOfWork
+from service import views
 
 class IsAdminMiddleware(BaseMiddleware):
-    async def __call__(self, handler, event: Message, data) -> bool:
-        user = data['user']
-        if not user.is_admin:
+    async def __call__(self, handler, event: Message, data):
+        is_admin = await views.is_user_admin(SQLAlchemyUnitOfWork(), event.from_user.id)
+        if not is_admin:
             return await event.answer('Вы не являетесь администратором')
         return await handler(event, data)

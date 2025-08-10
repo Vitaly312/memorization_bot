@@ -25,11 +25,12 @@ class SectionStat:
 async def get_section_questions_and_answers(uow: SQLAlchemyUnitOfWork,
                     section_title: str) -> list[QuestionAndAnswer]:
     async with uow:
-        return (await uow.session.scalars(
+        data = (await uow.session.execute(
             select(models.Question.question, models.Question.answer)
             .join(models.Section)
             .where(models.Section.title == section_title)
         )).all()
+        return [QuestionAndAnswer(question=row[0], answer=row[1]) for row in data]
 
 async def get_section_answers_count(uow: SQLAlchemyUnitOfWork,
                     section_title: str) -> int:
@@ -49,17 +50,19 @@ async def get_stat(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> list[SectionSt
 
         total_results = await uow.session.execute(
             select(models.Section.title, func.avg(models.Result.result))
-            .join(models.Result)
-            .where(models.Result.user_id == user_tg_id)
+            .join(models.User, models.User.id == models.Result.user_id)
+            .where(models.User.tg_id == user_tg_id)
+            .join(models.Section, models.Section.id == models.Result.section_id)
             .group_by(models.Section.title),
         )
         total_data = {row[0]: row[1] for row in total_results.fetchall()}
 
         day_results = await uow.session.execute(
             select(models.Section.title, func.avg(models.Result.result))
-            .join(models.Result)
-            .where(models.Result.user_id == user_tg_id)
+            .join(models.Result, models.Result.section_id == models.Section.id)
             .where(models.Result.created_on > yesterday)
+            .join(models.User, models.Result.user_id == models.User.id)
+            .where(models.User.tg_id == user_tg_id)
             .group_by(models.Section.title),
         )
         day_data = {row[0]: row[1] for row in day_results.fetchall()}
@@ -74,7 +77,35 @@ async def get_stat(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> list[SectionSt
         ]
 
 async def is_user_exists(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> bool:
+    """check if user exists in database. Return True if user exists, False otherwise"""
     async with uow:
         return await uow.session.scalar(
             select(models.User.id).where(models.User.tg_id == user_tg_id)
         ) is not None
+
+async def get_questions_for_section(uow: SQLAlchemyUnitOfWork, section_id: int) -> list[models.Question]:
+    async with uow:
+        return (await uow.session.execute(
+            select(models.Question.id, models.Question.question, models.Question.answer)
+            .where(models.Question.section_id == section_id)
+        )).all()
+        
+
+async def is_user_admin(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> bool:
+    async with uow:
+        return bool(await uow.session.scalar(
+            select(models.User.is_admin).where(models.User.tg_id == user_tg_id)
+        ))
+
+@dataclass
+class SectionTitleAndId:
+    id: int
+    title: str
+
+async def get_section_titles_and_ids(uow: SQLAlchemyUnitOfWork) -> list[SectionTitleAndId]:
+    """get list of tuples (id, title) for all sections"""
+    async with uow:
+        data = (await uow.session.execute(
+            select(models.Section.id, models.Section.title)
+        )).all()
+        return [SectionTitleAndId(id=row[0], title=row[1]) for row in data]

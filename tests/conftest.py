@@ -1,5 +1,5 @@
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncEngine
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncEngine, AsyncSession
 from database.models import Base
 import datetime
 import sqlite3
@@ -34,10 +34,18 @@ async def tables(engine: AsyncEngine):
 @pytest_asyncio.fixture(scope="function")
 async def db_session(engine: AsyncEngine):
     async with engine.begin() as conn:
-        SessionMaker = async_sessionmaker(bind=conn)
-        session = SessionMaker()
-        
+        SessionMaker = async_sessionmaker(bind=conn, expire_on_commit=False)
         try:
-            yield session
+            yield SessionMaker()
         finally:
-            await session.close()
+            await conn.rollback()
+
+@pytest_asyncio.fixture(scope="function")
+async def session_manual_commit(engine: AsyncEngine):
+    '''
+    Fixture for getting a session with deleting all data after test
+    '''
+    yield AsyncSession(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
