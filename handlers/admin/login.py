@@ -2,12 +2,10 @@
 from aiogram.filters import Command
 from aiogram.types import Message
 from middlewares.authorization import CreateUserMiddleware
-from load_config import config
 import logging
 from service.uow import SQLAlchemyUnitOfWork
 from service import views, use_cases
-import json
-
+import os
 
 router = Router()
 router.message.middleware(CreateUserMiddleware())
@@ -18,7 +16,7 @@ async def cmd_start(message: Message):
     if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
         await message.answer('Вы зарегистрированы как администратор')
         return
-    if int(message.from_user.id) in json.loads(config["APP"]["ADMIN_TG_ID"]):
+    if str(message.from_user.id) in os.getenv("ADMIN_TG_IDS").split(','):
         await use_cases.make_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
         logger.info(f"{str(message.from_user.id)} успешно вошёл в панель управления")
         await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получить справку по командам админ панели')
