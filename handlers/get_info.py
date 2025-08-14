@@ -1,11 +1,11 @@
 ﻿from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
-from middlewares.authorization import CreateUserMiddleware
+from middlewares.authorization import setup_middlewares
 
 
 router = Router()
-router.message.middleware(CreateUserMiddleware())
+setup_middlewares(router)
 
 @router.message(Command('start'))
 async def cmd_start(message: Message):

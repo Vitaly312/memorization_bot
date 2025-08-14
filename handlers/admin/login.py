@@ -1,23 +1,23 @@
 ﻿from aiogram import Router, html
 from aiogram.filters import Command
 from aiogram.types import Message
-from middlewares.authorization import CreateUserMiddleware
+from middlewares.authorization import setup_middlewares
 import logging
 from service.uow import SQLAlchemyUnitOfWork
 from service import views, use_cases
 import os
 
 router = Router()
-router.message.middleware(CreateUserMiddleware())
+setup_middlewares(router)
 logger = logging.getLogger(__name__)
 
 @router.message(Command('admin', 'a'))
-async def cmd_start(message: Message):
-    if await views.is_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id):
+async def cmd_start(message: Message, uow: SQLAlchemyUnitOfWork):
+    if await views.is_user_admin(uow, message.from_user.id):
         await message.answer('Вы зарегистрированы как администратор')
         return
     if str(message.from_user.id) in os.getenv("ADMIN_TG_IDS").split(','):
-        await use_cases.make_user_admin(SQLAlchemyUnitOfWork(), message.from_user.id)
+        await use_cases.make_user_admin(uow, message.from_user.id)
         logger.info(f"{str(message.from_user.id)} успешно вошёл в панель управления")
         await message.answer('Вы вошли в панель управления\nВведите /admin_help, чтобы получить справку по командам админ панели')
         return
@@ -25,8 +25,7 @@ async def cmd_start(message: Message):
     await message.answer('Вы не являетесь администратором')
 
 @router.message(Command('exit'))
-async def cmd_exit(message: Message):
-    uow = SQLAlchemyUnitOfWork()
+async def cmd_exit(message: Message, uow: SQLAlchemyUnitOfWork):
     if await views.is_user_admin(uow, message.from_user.id):
         await use_cases.remove_user_admin(uow, message.from_user.id)
         await message.answer('Вы вышли из панели управления')

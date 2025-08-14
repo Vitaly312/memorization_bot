@@ -3,6 +3,7 @@ from database import models
 from sqlalchemy import select, func
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from redis.asyncio import Redis
 
 async def get_section_titles(uow: SQLAlchemyUnitOfWork) -> list[str]:
     async with uow:
@@ -76,12 +77,18 @@ async def get_stat(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> list[SectionSt
             for title in all_sections
         ]
 
-async def is_user_exists(uow: SQLAlchemyUnitOfWork, user_tg_id: int) -> bool:
+async def is_user_exists(uow: SQLAlchemyUnitOfWork, redis: Redis, user_tg_id: int) -> bool:
     """check if user exists in database. Return True if user exists, False otherwise"""
+    if await redis.get(f"user:{user_tg_id}"):
+        return True
     async with uow:
-        return await uow.session.scalar(
+        result = await uow.session.scalar(
             select(models.User.id).where(models.User.tg_id == user_tg_id)
         ) is not None
+    if result:
+        await redis.set(f"user:{user_tg_id}", "1", ex=60*60*24*30)
+        return True
+    return False
 
 async def get_questions_for_section(uow: SQLAlchemyUnitOfWork, section_id: int) -> list[models.Question]:
     async with uow:

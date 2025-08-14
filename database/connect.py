@@ -13,7 +13,7 @@ DATABASE_URL = "mysql+aiomysql://{user}:{password}@{host}:{port}/{database}".for
     port=os.getenv("MYSQL_PORT", 3306),
     database=os.getenv("MYSQL_DATABASE"),
 )
-engine = create_async_engine(DATABASE_URL, pool_recycle=1600)
+engine = create_async_engine(DATABASE_URL, pool_size=30, max_overflow=50, pool_recycle=1600)
 
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 

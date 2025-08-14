@@ -3,20 +3,20 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from handlers.states import CreateQuestion
 from aiogram.fsm.context import FSMContext
-from middlewares.authorization import CreateUserMiddleware
+from middlewares.authorization import setup_middlewares
 from middlewares.admin import IsAdminMiddleware
 from service.uow import SQLAlchemyUnitOfWork
 from service import use_cases, views, exceptions
 
 
 router = Router()
-router.message.middleware(CreateUserMiddleware())
+setup_middlewares(router)
 router.message.middleware(IsAdminMiddleware())
 
 
 @router.message(Command("list_sections"))
-async def cmd_list_sections(message: Message):
-    sections = await views.get_section_titles_and_ids(SQLAlchemyUnitOfWork())
+async def cmd_list_sections(message: Message, uow: SQLAlchemyUnitOfWork):
+    sections = await views.get_section_titles_and_ids(uow=uow)
     if not sections:
         await message.answer("На данный момент разделы не существуют")
     else:
@@ -27,12 +27,12 @@ async def cmd_list_sections(message: Message):
 
 
 @router.message(Command("create_section"))
-async def cmd_create_section(message: Message, command: CommandObject):
+async def cmd_create_section(message: Message, command: CommandObject, uow: SQLAlchemyUnitOfWork):
     if not command.args:
         await message.answer("Необходимо указать название раздела")
         return
     try:
-        await use_cases.create_section(SQLAlchemyUnitOfWork(), command.args)
+        await use_cases.create_section(uow=uow, title=command.args)
         await message.answer(f"Раздел с названием {command.args} успешно создан")
     except exceptions.SectionAlreadyExistsException:
         await message.answer(
@@ -41,9 +41,9 @@ async def cmd_create_section(message: Message, command: CommandObject):
 
 
 @router.message(Command("delete_section"))
-async def cmd_delete_section(message: Message, command: CommandObject):
+async def cmd_delete_section(message: Message, command: CommandObject, uow: SQLAlchemyUnitOfWork):
     try:
-        await use_cases.delete_section(SQLAlchemyUnitOfWork(), command.args)
+        await use_cases.delete_section(uow, command.args)
         await message.answer(f"Раздел с названием {command.args} успешно удалён")
     except exceptions.SectionNotFoundException:
         await message.answer("Раздела с таким названием не существует")
@@ -73,11 +73,11 @@ async def cmd_create_question(message: Message, state: FSMContext):
 
 
 @router.message(CreateQuestion.select_section, F.text)
-async def cmd_select_section(message: Message, state: FSMContext):
+async def cmd_select_section(message: Message, state: FSMContext, uow: SQLAlchemyUnitOfWork):
     user_data = await state.get_data()
     try:
         await use_cases.create_question(
-            SQLAlchemyUnitOfWork(),
+            uow,
             user_data["question"],
             user_data["answer"],
             int(message.text) if message.text.isdigit() else None,
@@ -92,14 +92,14 @@ async def cmd_select_section(message: Message, state: FSMContext):
 
 
 @router.message(Command("list_questions"))
-async def cmd_list_questions(message: Message, command: CommandObject):
+async def cmd_list_questions(message: Message, command: CommandObject, uow: SQLAlchemyUnitOfWork):
     try:
         section_id = int(command.args or '')
     except ValueError:
         await message.answer("Необходимо указать id раздела")
         return
     questions = await views.get_questions_for_section(
-        SQLAlchemyUnitOfWork(), section_id
+        uow, section_id
     )
     if not questions:
         await message.answer(f"Для секции {command.args} не существует вопросов")
@@ -111,9 +111,9 @@ async def cmd_list_questions(message: Message, command: CommandObject):
 
 
 @router.message(Command("delete_question"))
-async def cmd_delete_question(message: Message, command: CommandObject):
+async def cmd_delete_question(message: Message, command: CommandObject, uow: SQLAlchemyUnitOfWork):
     try:
-        await use_cases.delete_question(SQLAlchemyUnitOfWork(), int(command.args))
+        await use_cases.delete_question(uow, int(command.args or ''))
         await message.answer(f"Вопрос с id {command.args} успешно удалён")
     except exceptions.QuestionNotFoundException:
         await message.answer("Вопроса с указанным id не существует")

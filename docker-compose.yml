@@ -5,15 +5,17 @@ services:
     command: ["/bin/sh", "wait.sh"]
     depends_on:
       - db
+      - redis
     environment:
       MYSQL_HOST: db
+      REDIS_HOST: redis
+    ports:
+      - "${BOT_WEBHOOK_PORT}:${BOT_WEBHOOK_PORT}"
     env_file:
       - .env
-
+    
   db:
     image: mysql:8.0
-    ports:
-      - "33900:3306"
     volumes:
       - ./mysql:/var/lib/mysql
     environment:
@@ -21,3 +23,9 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
+  
+  redis:
+    image: redis:8.2.0
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - ./redis:/data

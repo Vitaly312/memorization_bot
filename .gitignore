@@ -8,3 +8,4 @@ mysql/
 setup_tools.py
 .mypy_cache/
 .pytest_cache/
+redis/

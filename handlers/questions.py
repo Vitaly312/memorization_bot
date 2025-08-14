@@ -9,15 +9,15 @@ from keyboards.question import (
     QuestionSectionCallbackFactory,
 )
 from random import choice
-from middlewares.authorization import CreateUserMiddleware
-from service import views, use_cases, uow
+from middlewares.authorization import setup_middlewares
+from service import views, use_cases
+from service.uow import SQLAlchemyUnitOfWork
 from handlers.states import ExecutingSurvey
 from aiogram.fsm.context import FSMContext
 
 
 router = Router()
-router.message.middleware(CreateUserMiddleware())
-router.callback_query.middleware(CreateUserMiddleware())
+setup_middlewares(router)
 
 
 async def get_random_question(questions: dict[str, str]) -> tuple[str, str]:
@@ -27,8 +27,8 @@ async def get_random_question(questions: dict[str, str]) -> tuple[str, str]:
 
 
 @router.message(Command("start_survey"))
-async def select_section(message: Message):
-    sections = await views.get_section_titles(uow=uow.SQLAlchemyUnitOfWork())
+async def select_section(message: Message, uow: SQLAlchemyUnitOfWork):
+    sections = await views.get_section_titles(uow=uow)
     if sections:
         await message.answer(
             "Выберите раздел", reply_markup=question_keyboard(sections)
@@ -42,11 +42,12 @@ async def handle_cb_section_selected(
     callback: types.CallbackQuery,
     callback_data: QuestionSectionCallbackFactory,
     state: FSMContext,
+    uow: SQLAlchemyUnitOfWork,
 ):
     questions = {
         question.question: question.answer
         for question in await views.get_section_questions_and_answers(
-            uow=uow.SQLAlchemyUnitOfWork(), section_title=callback_data.section
+            uow=uow, section_title=callback_data.section
         )
     }
     await callback.message.answer(f"Вы выбрали раздел {callback_data.section}")
@@ -69,13 +70,15 @@ async def handle_cb_section_selected(
 
 
 @router.message(ExecutingSurvey.wait_answer, F.text == "Завершить опрос")
-async def exit_survey(message: Message, state: FSMContext):
+async def exit_survey(message: Message, state: FSMContext, uow: SQLAlchemyUnitOfWork):
     await message.answer("Вы завершили опрос")
-    await handle_survey_ending(message, state)
+    await handle_survey_ending(message, state, uow)
 
 
 @router.message(ExecutingSurvey.wait_answer, F.text)
-async def get_next_question(message: Message, state: FSMContext):
+async def get_next_question(
+    message: Message, state: FSMContext, uow: SQLAlchemyUnitOfWork
+):
     user_data = await state.get_data()
     if message.text.lower() == user_data["current_answer"].lower():
         await state.update_data(
@@ -92,13 +95,15 @@ async def get_next_question(message: Message, state: FSMContext):
         await state.update_data({"questions": questions, "current_answer": answer})
         await message.answer(question)
     else:
-        await handle_survey_ending(message, state)
+        await handle_survey_ending(message, state, uow)
 
 
-async def handle_survey_ending(message: Message, state: FSMContext):
+async def handle_survey_ending(
+    message: Message, state: FSMContext, uow: SQLAlchemyUnitOfWork
+):
     user_data = await state.get_data()
     result = await use_cases.save_survey_result(
-        uow=uow.SQLAlchemyUnitOfWork(),
+        uow=uow,
         section_title=user_data["section"],
         correct_answers_count=user_data["correct_answers_count"],
         user_tg_id=message.from_user.id,
@@ -114,10 +119,8 @@ def _format_stat_value(value: float | None) -> str:
 
 
 @router.message(Command("info"))
-async def cmd_get_info(message: Message):
-    stat = await views.get_stat(
-        uow=uow.SQLAlchemyUnitOfWork(), user_tg_id=message.from_user.id
-    )
+async def cmd_get_info(message: Message, uow: SQLAlchemyUnitOfWork):
+    stat = await views.get_stat(uow=uow, user_tg_id=message.from_user.id)
     if not stat:
         await message.answer("Нет данных")
         return
